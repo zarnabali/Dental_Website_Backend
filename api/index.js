@@ -65,13 +65,19 @@ const connectDB = async () => {
   if (cached.conn) {
     return cached.conn;
   }
-  if (!process.env.MONGODB_URI) {
+  const RESOLVED_MONGODB_URI =
+    process.env.MONGODB_URI ||
+    process.env.DATABASE_URL ||
+    process.env.MONGO_URL ||
+    process.env.MONGODB_CONNECTION_STRING;
+
+  if (!RESOLVED_MONGODB_URI) {
     console.warn('⚠️ MONGODB_URI is not set. Continuing without DB connection.');
     return null;
   }
   if (!cached.promise) {
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, {
+      .connect(RESOLVED_MONGODB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
         serverSelectionTimeoutMS: 30000,

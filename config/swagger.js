@@ -21,6 +21,30 @@ const options = {
             }
           ]
         : []),
+      ...(process.env.RAILWAY_PUBLIC_DOMAIN
+        ? [
+            {
+              url: `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`,
+              description: 'Railway production'
+            }
+          ]
+        : []),
+      ...(process.env.RAILWAY_PUBLIC_URL
+        ? [
+            {
+              url: process.env.RAILWAY_PUBLIC_URL,
+              description: 'Railway public URL'
+            }
+          ]
+        : []),
+      ...(process.env.BASE_URL
+        ? [
+            {
+              url: process.env.BASE_URL,
+              description: 'Configured BASE_URL'
+            }
+          ]
+        : []),
       ...(process.env.PRODUCTION_API_URL
         ? [
             {

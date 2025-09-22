@@ -78,9 +78,16 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// Resolve Mongo connection string from multiple possible env var names
+const RESOLVED_MONGODB_URI =
+  process.env.MONGODB_URI ||
+  process.env.DATABASE_URL ||
+  process.env.MONGO_URL ||
+  process.env.MONGODB_CONNECTION_STRING;
+
 // MongoDB connection with better error handling (non-fatal in production)
-if (process.env.MONGODB_URI) {
-  mongoose.connect(process.env.MONGODB_URI, {
+if (RESOLVED_MONGODB_URI) {
+  mongoose.connect(RESOLVED_MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000, // 30 seconds
@@ -98,7 +105,7 @@ if (process.env.MONGODB_URI) {
     console.log('💡 Verify MongoDB Atlas network access and credentials');
   });
 } else {
-  console.warn('⚠️ MONGODB_URI is not set. Starting server without a database connection.');
+  console.warn('⚠️ No MongoDB connection string found. Checked MONGODB_URI, DATABASE_URL, MONGO_URL, MONGODB_CONNECTION_STRING. Starting without DB.');
 }
 
 // MongoDB connection monitoring
@@ -232,26 +239,37 @@ app.use('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+const getBaseUrl = () => {
+  if (process.env.NODE_ENV === 'production') {
+    const vercel = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+    const railway = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+      : (process.env.RAILWAY_PUBLIC_URL || null);
+    return process.env.BASE_URL || vercel || railway || `http://localhost:${PORT}`;
+  }
+  return `http://localhost:${PORT}`;
+};
 
 app.listen(PORT, () => {
+  const baseUrl = getBaseUrl();
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+  console.log(`📊 Health check: ${baseUrl}/health`);
+  console.log(`📚 API Documentation: ${baseUrl}/api-docs`);
   console.log(`🔗 Available endpoints:`);
-  console.log(`   • Authentication: http://localhost:${PORT}/api/auth`);
-  console.log(`   • Users: http://localhost:${PORT}/api/users`);
-  console.log(`   • File Upload: http://localhost:${PORT}/api/upload`);
-  console.log(`   • Hero Images: http://localhost:${PORT}/api/hero-images`);
-  console.log(`   • Hero Videos: http://localhost:${PORT}/api/hero-videos`);
-  console.log(`   • Partners: http://localhost:${PORT}/api/partners`);
-  console.log(`   • Team: http://localhost:${PORT}/api/team`);
-  console.log(`   • Team Pictures: http://localhost:${PORT}/api/team-pictures`);
-  console.log(`   • Features: http://localhost:${PORT}/api/features`);
-  console.log(`   • FAQs: http://localhost:${PORT}/api/faqs`);
-  console.log(`   • Feedback: http://localhost:${PORT}/api/feedback`);
-  console.log(`   • Services: http://localhost:${PORT}/api/services`);
-  console.log(`   • Blogs: http://localhost:${PORT}/api/blogs`);
-  console.log(`   • Clinic Info: http://localhost:${PORT}/api/clinic-info`);
-  console.log(`   • Swagger UI: http://localhost:${PORT}/api-docs`);
+  console.log(`   • Authentication: ${baseUrl}/api/auth`);
+  console.log(`   • Users: ${baseUrl}/api/users`);
+  console.log(`   • File Upload: ${baseUrl}/api/upload`);
+  console.log(`   • Hero Images: ${baseUrl}/api/hero-images`);
+  console.log(`   • Hero Videos: ${baseUrl}/api/hero-videos`);
+  console.log(`   • Partners: ${baseUrl}/api/partners`);
+  console.log(`   • Team: ${baseUrl}/api/team`);
+  console.log(`   • Team Pictures: ${baseUrl}/api/team-pictures`);
+  console.log(`   • Features: ${baseUrl}/api/features`);
+  console.log(`   • FAQs: ${baseUrl}/api/faqs`);
+  console.log(`   • Feedback: ${baseUrl}/api/feedback`);
+  console.log(`   • Services: ${baseUrl}/api/services`);
+  console.log(`   • Blogs: ${baseUrl}/api/blogs`);
+  console.log(`   • Clinic Info: ${baseUrl}/api/clinic-info`);
+  console.log(`   • Swagger UI: ${baseUrl}/api-docs`);
 });

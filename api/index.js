@@ -92,6 +92,19 @@ const connectDB = async () => {
 // Initialize connection (non-blocking)
 connectDB();
 
+// Ensure DB connected before handling mutating/DB-dependent routes
+const ensureDbConnected = async (req, res, next) => {
+  try {
+    if (!cached?.conn) {
+      await connectDB();
+    }
+    return next();
+  } catch (err) {
+    console.error('DB readiness check failed:', err?.message || err);
+    return res.status(503).json({ success: false, message: 'Service unavailable. Database not connected yet.' });
+  }
+};
+
 // MongoDB connection monitoring
 mongoose.connection.on('connected', () => {
   console.log('🟢 MongoDB connected');
@@ -129,20 +142,20 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
 }));
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/hero-images', heroImageRoutes);
-app.use('/api/hero-videos', heroVideoRoutes);
-app.use('/api/partners', partnerRoutes);
-app.use('/api/team', teamRoutes);
-app.use('/api/team-pictures', teamPictureRoutes);
-app.use('/api/features', featuresRoutes);
-app.use('/api/faqs', faqRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/blogs', blogRoutes);
-app.use('/api/clinic-info', clinicInfoRoutes);
+app.use('/api/auth', ensureDbConnected, authRoutes);
+app.use('/api/users', ensureDbConnected, userRoutes);
+app.use('/api/upload', ensureDbConnected, uploadRoutes);
+app.use('/api/hero-images', ensureDbConnected, heroImageRoutes);
+app.use('/api/hero-videos', ensureDbConnected, heroVideoRoutes);
+app.use('/api/partners', ensureDbConnected, partnerRoutes);
+app.use('/api/team', ensureDbConnected, teamRoutes);
+app.use('/api/team-pictures', ensureDbConnected, teamPictureRoutes);
+app.use('/api/features', ensureDbConnected, featuresRoutes);
+app.use('/api/faqs', ensureDbConnected, faqRoutes);
+app.use('/api/feedback', ensureDbConnected, feedbackRoutes);
+app.use('/api/services', ensureDbConnected, serviceRoutes);
+app.use('/api/blogs', ensureDbConnected, blogRoutes);
+app.use('/api/clinic-info', ensureDbConnected, clinicInfoRoutes);
 
 // Basic route
 app.get('/', (req, res) => {

@@ -9,6 +9,18 @@ const swaggerSpecs = require('../config/swagger');
 
 const app = express();
 
+// Comprehensive environment variable debugging for Vercel
+console.log('�� VERCEL ENVIRONMENT DEBUGGING:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('VERCEL:', process.env.VERCEL);
+console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
+console.log('VERCEL_URL:', process.env.VERCEL_URL);
+console.log('Available MongoDB env vars:');
+console.log('  MONGODB_URI:', process.env.MONGODB_URI ? 'SET' : 'NOT SET');
+console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('  MONGO_URL:', process.env.MONGO_URL ? 'SET' : 'NOT SET');
+console.log('  MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? 'SET' : 'NOT SET');
+
 // Security middleware (relaxed for Swagger UI assets on Vercel)
 app.use(
   helmet({
@@ -55,6 +67,25 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// Resolve Mongo connection string from multiple possible env var names
+const RESOLVED_MONGODB_URI =
+  process.env.MONGODB_URI ||
+  process.env.DATABASE_URL ||
+  process.env.MONGO_URL ||
+  process.env.MONGODB_CONNECTION_STRING;
+
+console.log('🔗 VERCEL RESOLVED MONGODB URI:');
+if (RESOLVED_MONGODB_URI) {
+  // Mask sensitive info but show structure
+  const masked = RESOLVED_MONGODB_URI.replace(/:[^:@]*@/, ':***@');
+  console.log('  URI Pattern:', masked);
+  console.log('  URI Length:', RESOLVED_MONGODB_URI.length);
+  console.log('  Contains Auth:', RESOLVED_MONGODB_URI.includes('@'));
+  console.log('  Contains Database:', RESOLVED_MONGODB_URI.includes('/') && RESOLVED_MONGODB_URI.split('/').length > 3);
+} else {
+  console.log('  ❌ NO MONGODB URI FOUND');
+}
+
 // MongoDB connection with caching for Vercel serverless and buffering enabled
 let cached = global.__mongooseConn;
 if (!cached) {
@@ -65,21 +96,14 @@ const connectDB = async () => {
   if (cached.conn) {
     return cached.conn;
   }
-  const RESOLVED_MONGODB_URI =
-    process.env.MONGODB_URI ||
-    process.env.DATABASE_URL ||
-    process.env.MONGO_URL ||
-    process.env.MONGODB_CONNECTION_STRING;
-
   if (!RESOLVED_MONGODB_URI) {
-    console.warn('⚠️ MONGODB_URI is not set. Continuing without DB connection.');
+    console.warn('⚠️ No MongoDB connection string found. Checked MONGODB_URI, DATABASE_URL, MONGO_URL, MONGODB_CONNECTION_STRING.');
     return null;
   }
   if (!cached.promise) {
+    console.log('�� Vercel: Attempting MongoDB connection...');
     cached.promise = mongoose
       .connect(RESOLVED_MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
         serverSelectionTimeoutMS: 30000,
         socketTimeoutMS: 45000,
         maxPoolSize: 10,
@@ -93,7 +117,27 @@ const connectDB = async () => {
         return mongooseInstance;
       })
       .catch((error) => {
-        console.error('❌ MongoDB connection error (non-fatal):', error?.message || error);
+        console.error('❌ VERCEL MONGODB CONNECTION ERROR:');
+        console.error('Error Type:', error.name);
+        console.error('Error Code:', error.code);
+        console.error('Error Message:', error.message);
+        if (error.cause) console.error('Error Cause:', error.cause);
+        
+        // Specific guidance based on error type
+        if (error.message.includes('authentication failed') || error.code === 8000) {
+          console.error('�� AUTHENTICATION ISSUE:');
+          console.error('  - Check username/password in MongoDB URI');
+          console.error('  - Verify database user exists in MongoDB Atlas');
+          console.error('  - Ensure user has proper permissions');
+          console.error('  - Check if password contains special characters (URL encode them)');
+        } else if (error.message.includes('ENOTFOUND') || error.message.includes('timeout')) {
+          console.error('�� NETWORK ISSUE:');
+          console.error('  - Check MongoDB Atlas IP allowlist');
+          console.error('  - Add 0.0.0.0/0 to allow all IPs (temporary testing)');
+          console.error('  - Verify cluster is running');
+        }
+        
+        console.error('Stack trace:', error.stack);
         return null;
       });
   }
@@ -112,12 +156,29 @@ const ensureDbConnected = async (req, res, next) => {
     }
     if (!cached?.conn) {
       // Still no connection: return 503 to avoid opaque 500s
-      return res.status(503).json({ success: false, message: 'Database unavailable. Check IP allowlist and credentials.' });
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database unavailable. Check IP allowlist and credentials.',
+        debug: {
+          platform: 'Vercel',
+          hasUri: !!RESOLVED_MONGODB_URI,
+          checkedVars: ['MONGODB_URI', 'DATABASE_URL', 'MONGO_URL', 'MONGODB_CONNECTION_STRING']
+        }
+      });
     }
     return next();
   } catch (err) {
     console.error('DB readiness check failed:', err?.message || err);
-    return res.status(503).json({ success: false, message: 'Service unavailable. Database not connected yet.' });
+    return res.status(503).json({ 
+      success: false, 
+      message: 'Service unavailable. Database not connected yet.',
+      error: err?.message,
+      debug: {
+        platform: 'Vercel',
+        errorCode: err?.code,
+        hasUri: !!RESOLVED_MONGODB_URI
+      }
+    });
   }
 };
 
@@ -127,7 +188,8 @@ mongoose.connection.on('connected', () => {
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error('🔴 MongoDB connection error:', err);
+  console.error('🔴 MongoDB runtime error:', err.message);
+  console.error('Error details:', err);
 });
 
 mongoose.connection.on('disconnected', () => {
@@ -205,8 +267,17 @@ app.get('/debug/env', (req, res) => {
   const safeEnv = {
     nodeEnv: process.env.NODE_ENV,
     vercelUrl: process.env.VERCEL_URL,
+    vercelEnv: process.env.VERCEL_ENV,
+    vercel: process.env.VERCEL,
     productionApiUrl: process.env.PRODUCTION_API_URL,
-    hasMongoUri: Boolean(process.env.MONGODB_URI),
+    hasMongoUri: Boolean(process.env.MONGODB_URI || process.env.DATABASE_URL || process.env.MONGO_URL || process.env.MONGODB_CONNECTION_STRING),
+    mongoVars: {
+      MONGODB_URI: !!process.env.MONGODB_URI,
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      MONGO_URL: !!process.env.MONGO_URL,
+      MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
+    },
+    platform: 'Vercel'
   };
   res.json({ success: true, env: safeEnv });
 });
@@ -215,11 +286,22 @@ app.get('/debug/env', (req, res) => {
 app.get('/debug/db', async (req, res) => {
   try {
     const state = mongoose.connection?.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+    const stateNames = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
     let ping = null;
     if (state === 1) {
       ping = await mongoose.connection.db.admin().ping();
     }
-    res.json({ success: true, state, ping });
+    res.json({ 
+      success: true, 
+      state, 
+      stateName: stateNames[state] || 'unknown',
+      ping,
+      hasUri: !!RESOLVED_MONGODB_URI,
+      uriLength: RESOLVED_MONGODB_URI?.length || 0,
+      mongooseVersion: mongoose.version,
+      cached: !!cached?.conn,
+      platform: 'Vercel'
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, stack: error.stack });
   }

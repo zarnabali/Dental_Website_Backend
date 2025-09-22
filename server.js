@@ -30,37 +30,25 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // CORS configuration
+const resolveAllowedOrigins = () =>
+  (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // In development or when NODE_ENV is not set, allow all origins
-    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-      console.log('Development mode - allowing origin:', origin || 'no origin');
-      return callback(null, true);
-    }
-    
-    // Allow requests with no origin (like mobile apps, curl requests, or direct API calls)
-    if (!origin) {
-      console.log('Request with no origin - allowing');
-      return callback(null, true);
-    }
-    
-    const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3001',
-      'http://localhost:5000',
-      'http://127.0.0.1:5000'
-    ];
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log('Origin allowed:', origin);
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Always allow requests without an Origin header (curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const allowed = resolveAllowedOrigins();
+    // If ALLOWED_ORIGINS is not set, default-allow all origins
+    if (allowed.length === 0) return callback(null, true);
+
+    if (allowed.includes(origin)) return callback(null, true);
+
+    console.log('CORS blocked origin:', origin);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -78,6 +66,18 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// Comprehensive environment variable debugging
+console.log('🔍 ENVIRONMENT DEBUGGING:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
+console.log('Available MongoDB env vars:');
+console.log('  MONGODB_URI:', process.env.MONGODB_URI ? 'SET' : 'NOT SET');
+console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('  MONGO_URL:', process.env.MONGO_URL ? 'SET' : 'NOT SET');
+console.log('  MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? 'SET' : 'NOT SET');
+
 // Resolve Mongo connection string from multiple possible env var names
 const RESOLVED_MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -85,11 +85,22 @@ const RESOLVED_MONGODB_URI =
   process.env.MONGO_URL ||
   process.env.MONGODB_CONNECTION_STRING;
 
+console.log('🔗 RESOLVED MONGODB URI:');
+if (RESOLVED_MONGODB_URI) {
+  // Mask sensitive info but show structure
+  const masked = RESOLVED_MONGODB_URI.replace(/:[^:@]*@/, ':***@');
+  console.log('  URI Pattern:', masked);
+  console.log('  URI Length:', RESOLVED_MONGODB_URI.length);
+  console.log('  Contains Auth:', RESOLVED_MONGODB_URI.includes('@'));
+  console.log('  Contains Database:', RESOLVED_MONGODB_URI.includes('/') && RESOLVED_MONGODB_URI.split('/').length > 3);
+} else {
+  console.log('  ❌ NO MONGODB URI FOUND');
+}
+
 // MongoDB connection with better error handling (non-fatal in production)
 if (RESOLVED_MONGODB_URI) {
+  console.log('�� Attempting MongoDB connection...');
   mongoose.connect(RESOLVED_MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000, // 30 seconds
     socketTimeoutMS: 45000, // 45 seconds
     maxPoolSize: 20, // Increased from 10
@@ -101,8 +112,31 @@ if (RESOLVED_MONGODB_URI) {
     console.log('✅ Connected to MongoDB successfully');
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection error (continuing without DB):', error.message || error);
-    console.log('💡 Verify MongoDB Atlas network access and credentials');
+    console.error('❌ MONGODB CONNECTION ERROR:');
+    console.error('Error Type:', error.name);
+    console.error('Error Code:', error.code);
+    console.error('Error Message:', error.message);
+    if (error.cause) console.error('Error Cause:', error.cause);
+    
+    // Specific guidance based on error type
+    if (error.message.includes('authentication failed') || error.code === 8000) {
+      console.error('�� AUTHENTICATION ISSUE:');
+      console.error('  - Check username/password in MongoDB URI');
+      console.error('  - Verify database user exists in MongoDB Atlas');
+      console.error('  - Ensure user has proper permissions');
+      console.error('  - Check if password contains special characters (URL encode them)');
+    } else if (error.message.includes('ENOTFOUND') || error.message.includes('timeout')) {
+      console.error('�� NETWORK ISSUE:');
+      console.error('  - Check MongoDB Atlas IP allowlist');
+      console.error('  - Add 0.0.0.0/0 to allow all IPs (temporary testing)');
+      console.error('  - Verify cluster is running');
+    } else if (error.message.includes('ECONNREFUSED')) {
+      console.error('�� CONNECTION REFUSED:');
+      console.error('  - MongoDB cluster might be paused or deleted');
+      console.error('  - Check MongoDB Atlas dashboard');
+    }
+    
+    console.error('Stack trace:', error.stack);
   });
 } else {
   console.warn('⚠️ No MongoDB connection string found. Checked MONGODB_URI, DATABASE_URL, MONGO_URL, MONGODB_CONNECTION_STRING. Starting without DB.');
@@ -114,7 +148,8 @@ mongoose.connection.on('connected', () => {
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error('🔴 MongoDB connection error:', err);
+  console.error('🔴 MongoDB runtime error:', err.message);
+  console.error('Error details:', err);
 });
 
 mongoose.connection.on('disconnected', () => {
@@ -127,6 +162,48 @@ process.on('SIGINT', async () => {
   await mongoose.connection.close();
   process.exit(0);
 });
+
+// Ensure DB connected before handling /api routes
+const ensureDbConnected = async (req, res, next) => {
+  if (!RESOLVED_MONGODB_URI) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database unavailable: connection string not configured (MONGODB_URI/DATABASE_URL/MONGO_URL)',
+      debug: {
+        checkedVars: ['MONGODB_URI', 'DATABASE_URL', 'MONGO_URL', 'MONGODB_CONNECTION_STRING'],
+        nodeEnv: process.env.NODE_ENV,
+        platform: process.env.RAILWAY_ENVIRONMENT ? 'Railway' : process.env.VERCEL ? 'Vercel' : 'Unknown'
+      }
+    });
+  }
+
+  const state = mongoose.connection.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+  if (state === 1) return next();
+
+  console.log(`⏳ Database not ready (state: ${state}), attempting connection...`);
+  try {
+    await mongoose.connect(RESOLVED_MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 20000,
+      bufferCommands: false,
+    });
+    console.log('✅ Database connection established for request');
+    return next();
+  } catch (err) {
+    console.error('❌ DB connect attempt failed:', err?.message || err);
+    return res.status(503).json({
+      success: false,
+      message: 'Database unavailable. Verify credentials and IP allowlist.',
+      error: err?.message,
+      debug: {
+        errorCode: err?.code,
+        platform: process.env.RAILWAY_ENVIRONMENT ? 'Railway' : process.env.VERCEL ? 'Vercel' : 'Unknown',
+        hasUri: !!RESOLVED_MONGODB_URI,
+        connectionState: mongoose.connection.readyState
+      }
+    });
+  }
+};
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -150,6 +227,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'Dentist Website API Documentation'
 }));
+
+// Guard all API routes behind DB readiness
+app.use('/api', ensureDbConnected);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -212,6 +292,53 @@ app.get('/api/test-connection', (req, res) => {
   });
 });
 
+// Debug: environment (non-sensitive)
+app.get('/debug/env', (req, res) => {
+  const safeEnv = {
+    nodeEnv: process.env.NODE_ENV,
+    port: process.env.PORT,
+    baseUrl: process.env.BASE_URL,
+    vercelUrl: process.env.VERCEL_URL,
+    railwayDomain: process.env.RAILWAY_PUBLIC_DOMAIN,
+    railwayUrl: process.env.RAILWAY_PUBLIC_URL,
+    railwayEnv: process.env.RAILWAY_ENVIRONMENT,
+    vercelEnv: process.env.VERCEL_ENV,
+    hasMongoUri: Boolean(process.env.MONGODB_URI || process.env.DATABASE_URL || process.env.MONGO_URL || process.env.MONGODB_CONNECTION_STRING),
+    mongoVars: {
+      MONGODB_URI: !!process.env.MONGODB_URI,
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      MONGO_URL: !!process.env.MONGO_URL,
+      MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
+    },
+    allowedOrigins: resolveAllowedOrigins(),
+    platform: process.env.RAILWAY_ENVIRONMENT ? 'Railway' : process.env.VERCEL ? 'Vercel' : 'Unknown'
+  };
+  res.json({ success: true, env: safeEnv });
+});
+
+// Debug: database
+app.get('/debug/db', async (req, res) => {
+  try {
+    const state = mongoose.connection?.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+    const stateNames = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+    let ping = null;
+    if (state === 1) {
+      ping = await mongoose.connection.db.admin().ping();
+    }
+    res.json({ 
+      success: true, 
+      state, 
+      stateName: stateNames[state] || 'unknown',
+      ping,
+      hasUri: !!RESOLVED_MONGODB_URI,
+      uriLength: RESOLVED_MONGODB_URI?.length || 0,
+      mongooseVersion: mongoose.version
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, stack: error.stack });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -240,7 +367,12 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 const getBaseUrl = () => {
-  if (process.env.NODE_ENV === 'production') {
+  // Check if we're in production based on platform or NODE_ENV
+  const isProduction = process.env.NODE_ENV === 'production' || 
+                      process.env.RAILWAY_ENVIRONMENT === 'production' ||
+                      process.env.VERCEL_ENV === 'production';
+                      
+  if (isProduction) {
     const vercel = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
     const railway = process.env.RAILWAY_PUBLIC_DOMAIN
       ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
@@ -252,10 +384,18 @@ const getBaseUrl = () => {
 
 app.listen(PORT, () => {
   const baseUrl = getBaseUrl();
+  const isProduction = process.env.NODE_ENV === 'production' || 
+                      process.env.RAILWAY_ENVIRONMENT === 'production' ||
+                      process.env.VERCEL_ENV === 'production';
+                      
   console.log(`🚀 Server is running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV} (Production: ${isProduction})`);
+  if (process.env.RAILWAY_ENVIRONMENT) console.log(`🚂 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT}`);
+  if (process.env.VERCEL_ENV) console.log(`▲ Vercel Environment: ${process.env.VERCEL_ENV}`);
   console.log(`📊 Health check: ${baseUrl}/health`);
-  console.log(`📚 API Documentation: ${baseUrl}/api-docs`);
+  console.log(`�� API Documentation: ${baseUrl}/api-docs`);
+  console.log(`�� Debug Environment: ${baseUrl}/debug/env`);
+  console.log(`🗄️ Debug Database: ${baseUrl}/debug/db`);
   console.log(`🔗 Available endpoints:`);
   console.log(`   • Authentication: ${baseUrl}/api/auth`);
   console.log(`   • Users: ${baseUrl}/api/users`);

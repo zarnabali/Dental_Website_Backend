@@ -17,6 +17,12 @@ app.use(
   })
 );
 
+// Basic request logging (lightweight)
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // Rate limiting - More generous for Vercel
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
@@ -73,8 +79,8 @@ const connectDB = async () => {
         maxPoolSize: 10,
         minPoolSize: 1,
         maxIdleTimeMS: 30000,
-        // Enable buffering so queries don't throw during cold starts
-        bufferCommands: true,
+        // Disable buffering to fail fast when DB is unreachable
+        bufferCommands: false,
       })
       .then((mongooseInstance) => {
         console.log('✅ Connected to MongoDB successfully');
@@ -97,6 +103,10 @@ const ensureDbConnected = async (req, res, next) => {
   try {
     if (!cached?.conn) {
       await connectDB();
+    }
+    if (!cached?.conn) {
+      // Still no connection: return 503 to avoid opaque 500s
+      return res.status(503).json({ success: false, message: 'Database unavailable. Check IP allowlist and credentials.' });
     }
     return next();
   } catch (err) {
@@ -184,6 +194,31 @@ app.get('/', (req, res) => {
   });
 });
 
+// Debug: environment (non-sensitive)
+app.get('/debug/env', (req, res) => {
+  const safeEnv = {
+    nodeEnv: process.env.NODE_ENV,
+    vercelUrl: process.env.VERCEL_URL,
+    productionApiUrl: process.env.PRODUCTION_API_URL,
+    hasMongoUri: Boolean(process.env.MONGODB_URI),
+  };
+  res.json({ success: true, env: safeEnv });
+});
+
+// Debug: database
+app.get('/debug/db', async (req, res) => {
+  try {
+    const state = mongoose.connection?.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+    let ping = null;
+    if (state === 1) {
+      ping = await mongoose.connection.db.admin().ping();
+    }
+    res.json({ success: true, state, ping });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, stack: error.stack });
+  }
+});
+
 // Health check route
 app.get('/health', (req, res) => {
   res.json({
@@ -207,19 +242,22 @@ app.get('/api/test-connection', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  
+  console.error('GLOBAL ERROR:', err);
+  console.error('Request:', req.method, req.url);
+  if (err && err.stack) console.error('Stack:', err.stack);
   // Handle CORS errors properly
-  if (err.message === 'Not allowed by CORS') {
+  if (err && err.message === 'Not allowed by CORS') {
     return res.status(403).json({
+      success: false,
       message: 'CORS: Not allowed by CORS',
       error: 'Origin not allowed'
     });
   }
-  
   res.status(500).json({
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    success: false,
+    message: err?.message || 'Internal server error',
+    path: req.url,
+    method: req.method
   });
 });
 
@@ -231,5 +269,5 @@ app.use('*', (req, res) => {
   });
 });
 
-// Export the app for Vercel
-module.exports = app;
+// Export a request handler for Vercel
+module.exports = (req, res) => app(req, res);

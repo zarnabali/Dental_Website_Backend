@@ -9,8 +9,13 @@ const swaggerSpecs = require('../config/swagger');
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware (relaxed for Swagger UI assets on Vercel)
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // Rate limiting - More generous for Vercel
 const limiter = rateLimit({
@@ -20,48 +25,20 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS configuration for Vercel
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl requests, or direct API calls)
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3001',
-      'http://localhost:5000',
-      'http://127.0.0.1:5000',
-      'https://*.vercel.app',
-      'https://*.netlify.app'
-    ];
-    
-    // Check if origin matches any allowed pattern
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (allowedOrigin.includes('*')) {
-        const pattern = allowedOrigin.replace('*', '.*');
-        return new RegExp(pattern).test(origin);
-      }
-      return allowedOrigin === origin;
-    });
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
+// Permissive CORS for Vercel/Next.js frontends (reflect origin, allow credentials)
+app.use((req, res, next) => {
+  const requestOrigin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
-app.use(cors(corsOptions));
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

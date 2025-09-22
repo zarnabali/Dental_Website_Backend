@@ -78,26 +78,28 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// MongoDB connection with better error handling
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 30000, // 30 seconds
-  socketTimeoutMS: 45000, // 45 seconds
-  maxPoolSize: 20, // Increased from 10
-  minPoolSize: 2, // Reduced from 5
-  maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
-  bufferCommands: false, // Disable mongoose buffering
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB successfully');
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  console.log('💡 Make sure your IP address is whitelisted in MongoDB Atlas');
-  console.log('💡 Check your MongoDB Atlas Network Access settings');
-  process.exit(1);
-});
+// MongoDB connection with better error handling (non-fatal in production)
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // 30 seconds
+    socketTimeoutMS: 45000, // 45 seconds
+    maxPoolSize: 20, // Increased from 10
+    minPoolSize: 2, // Reduced from 5
+    maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+    bufferCommands: false, // Disable mongoose buffering
+  })
+  .then(() => {
+    console.log('✅ Connected to MongoDB successfully');
+  })
+  .catch((error) => {
+    console.error('❌ MongoDB connection error (continuing without DB):', error.message || error);
+    console.log('💡 Verify MongoDB Atlas network access and credentials');
+  });
+} else {
+  console.warn('⚠️ MONGODB_URI is not set. Starting server without a database connection.');
+}
 
 // MongoDB connection monitoring
 mongoose.connection.on('connected', () => {

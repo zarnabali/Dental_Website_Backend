@@ -13,6 +13,22 @@ const options = {
       }
     },
     servers: [
+      ...(process.env.VERCEL_URL
+        ? [
+            {
+              url: `https://${process.env.VERCEL_URL}`,
+              description: 'Vercel production'
+            }
+          ]
+        : []),
+      ...(process.env.PRODUCTION_API_URL
+        ? [
+            {
+              url: process.env.PRODUCTION_API_URL,
+              description: 'Production API URL'
+            }
+          ]
+        : []),
       {
         url: 'http://localhost:5000',
         description: 'Development server'

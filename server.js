@@ -79,11 +79,23 @@ console.log('  MONGO_URL:', process.env.MONGO_URL ? 'SET' : 'NOT SET');
 console.log('  MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? 'SET' : 'NOT SET');
 
 // Resolve Mongo connection string from multiple possible env var names
-const RESOLVED_MONGODB_URI =
+let RESOLVED_MONGODB_URI =
   process.env.MONGODB_URI ||
   process.env.DATABASE_URL ||
   process.env.MONGO_URL ||
   process.env.MONGODB_CONNECTION_STRING;
+
+// TEMPORARY FIX: Railway environment variable caching issue
+// Force correct URI for Railway production
+if (process.env.RAILWAY_ENVIRONMENT === 'production') {
+  const currentUri = RESOLVED_MONGODB_URI;
+  if (currentUri && currentUri.length <= 65) {
+    console.log('🚨 DETECTED CACHED BROKEN URI ON RAILWAY - APPLYING FIX');
+    console.log('Old URI length:', currentUri.length);
+    RESOLVED_MONGODB_URI = 'mongodb+srv://Admin01:Admin@admin.ywqztuq.mongodb.net/dentist_website?retryWrites=true&w=majority';
+    console.log('Applied fixed URI length:', RESOLVED_MONGODB_URI.length);
+  }
+}
 
 console.log('🔗 RESOLVED MONGODB URI:');
 if (RESOLVED_MONGODB_URI) {

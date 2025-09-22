@@ -49,29 +49,47 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// MongoDB connection with better error handling for Vercel
+// MongoDB connection with caching for Vercel serverless and buffering enabled
+let cached = global.__mongooseConn;
+if (!cached) {
+  cached = global.__mongooseConn = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      minPoolSize: 1,
-      maxIdleTimeMS: 30000,
-      bufferCommands: false,
-    });
-    console.log('✅ Connected to MongoDB successfully');
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    console.log('💡 Make sure your IP address is whitelisted in MongoDB Atlas');
-    console.log('💡 Check your MongoDB Atlas Network Access settings');
-    // Don't exit process in Vercel, just log the error
+  if (cached.conn) {
+    return cached.conn;
   }
+  if (!process.env.MONGODB_URI) {
+    console.warn('⚠️ MONGODB_URI is not set. Continuing without DB connection.');
+    return null;
+  }
+  if (!cached.promise) {
+    cached.promise = mongoose
+      .connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 30000,
+        socketTimeoutMS: 45000,
+        maxPoolSize: 10,
+        minPoolSize: 1,
+        maxIdleTimeMS: 30000,
+        // Enable buffering so queries don't throw during cold starts
+        bufferCommands: true,
+      })
+      .then((mongooseInstance) => {
+        console.log('✅ Connected to MongoDB successfully');
+        return mongooseInstance;
+      })
+      .catch((error) => {
+        console.error('❌ MongoDB connection error (non-fatal):', error?.message || error);
+        return null;
+      });
+  }
+  cached.conn = await cached.promise;
+  return cached.conn;
 };
 
-// Connect to MongoDB
+// Initialize connection (non-blocking)
 connectDB();
 
 // MongoDB connection monitoring

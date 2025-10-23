@@ -17,7 +17,8 @@ mongoVars.forEach(varName => {
 
 // Main handler function
 module.exports = (req, res) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`Request: ${req.method} ${req.url}`);
+  console.log('Headers:', req.headers);
   
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,26 +29,34 @@ module.exports = (req, res) => {
     return res.status(204).end();
   }
   
-  // Route handling
-  if (req.url === '/' || req.url === '') {
+  // Normalize URL (remove query params and handle different formats)
+  const url = req.url.split('?')[0];
+  console.log('Normalized URL:', url);
+  
+  // Route handling with more flexible matching
+  if (url === '/' || url === '' || url === '/index.html') {
     return res.json({
       message: 'Dentist Website API is running on Vercel!',
       status: 'success',
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV
+      environment: process.env.NODE_ENV,
+      url: req.url,
+      normalizedUrl: url
     });
   }
   
-  if (req.url === '/health') {
+  if (url === '/health' || url.endsWith('/health')) {
     return res.json({
       status: 'OK',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV
+      environment: process.env.NODE_ENV,
+      url: req.url,
+      normalizedUrl: url
     });
   }
   
-  if (req.url === '/debug/env') {
+  if (url === '/debug/env' || url.endsWith('/debug/env')) {
     return res.json({
       success: true,
       env: {
@@ -63,15 +72,33 @@ module.exports = (req, res) => {
           MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
         },
         platform: 'Vercel'
-      }
+      },
+      url: req.url,
+      normalizedUrl: url
     });
   }
   
-  if (req.url === '/api/test') {
+  if (url === '/api/test' || url.endsWith('/api/test')) {
     return res.json({
       success: true,
       message: 'API is working!',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      url: req.url,
+      normalizedUrl: url
+    });
+  }
+  
+  // Debug route to see what's being requested
+  if (url === '/debug/request' || url.endsWith('/debug/request')) {
+    return res.json({
+      success: true,
+      request: {
+        method: req.method,
+        url: req.url,
+        normalizedUrl: url,
+        headers: req.headers,
+        query: req.query
+      }
     });
   }
   
@@ -79,6 +106,8 @@ module.exports = (req, res) => {
   res.status(404).json({
     message: 'Route not found',
     status: 'error',
-    url: req.url
+    url: req.url,
+    normalizedUrl: url,
+    availableRoutes: ['/', '/health', '/debug/env', '/api/test', '/debug/request']
   });
 };

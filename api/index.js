@@ -45,6 +45,69 @@ app.use((req, res, next) => {
   next();
 });
 
+// MongoDB connection setup
+const mongoose = require('mongoose');
+
+// Resolve MongoDB URI from environment variables
+const RESOLVED_MONGODB_URI = 
+  process.env.MONGODB_URI || 
+  process.env.DATABASE_URL || 
+  process.env.MONGO_URL || 
+  process.env.MONGODB_CONNECTION_STRING;
+
+console.log('MongoDB URI resolved:', RESOLVED_MONGODB_URI ? 'SET' : 'NOT SET');
+if (RESOLVED_MONGODB_URI) {
+  console.log('URI length:', RESOLVED_MONGODB_URI.length);
+}
+
+// MongoDB connection with error handling
+let isConnected = false;
+
+const connectDB = async () => {
+  if (isConnected) return;
+  
+  if (!RESOLVED_MONGODB_URI) {
+    console.error('No MongoDB URI found in environment variables');
+    return;
+  }
+  
+  try {
+    await mongoose.connect(RESOLVED_MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    isConnected = true;
+    console.log('Connected to MongoDB successfully');
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    isConnected = false;
+  }
+};
+
+// Initialize connection
+connectDB();
+
+// Database connection middleware
+const checkDBConnection = (req, res, next) => {
+  if (!isConnected) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database not connected. Check environment variables.',
+      debug: {
+        hasUri: !!RESOLVED_MONGODB_URI,
+        uriLength: RESOLVED_MONGODB_URI?.length || 0,
+        envVars: {
+          MONGODB_URI: !!process.env.MONGODB_URI,
+          DATABASE_URL: !!process.env.DATABASE_URL,
+          MONGO_URL: !!process.env.MONGO_URL,
+          MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
+        }
+      }
+    });
+  }
+  next();
+};
+
 // Import all routes
 const authRoutes = require('../routes/auth');
 const userRoutes = require('../routes/users');
@@ -71,21 +134,21 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
   customSiteTitle: 'Dentist Website API Documentation'
 }));
 
-// All API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/hero-images', heroImageRoutes);
-app.use('/api/hero-videos', heroVideoRoutes);
-app.use('/api/partners', partnerRoutes);
-app.use('/api/team', teamRoutes);
-app.use('/api/team-pictures', teamPictureRoutes);
-app.use('/api/features', featuresRoutes);
-app.use('/api/faqs', faqRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/blogs', blogRoutes);
-app.use('/api/clinic-info', clinicInfoRoutes);
+// All API routes with database connection check
+app.use('/api/auth', checkDBConnection, authRoutes);
+app.use('/api/users', checkDBConnection, userRoutes);
+app.use('/api/upload', checkDBConnection, uploadRoutes);
+app.use('/api/hero-images', checkDBConnection, heroImageRoutes);
+app.use('/api/hero-videos', checkDBConnection, heroVideoRoutes);
+app.use('/api/partners', checkDBConnection, partnerRoutes);
+app.use('/api/team', checkDBConnection, teamRoutes);
+app.use('/api/team-pictures', checkDBConnection, teamPictureRoutes);
+app.use('/api/features', checkDBConnection, featuresRoutes);
+app.use('/api/faqs', checkDBConnection, faqRoutes);
+app.use('/api/feedback', checkDBConnection, feedbackRoutes);
+app.use('/api/services', checkDBConnection, serviceRoutes);
+app.use('/api/blogs', checkDBConnection, blogRoutes);
+app.use('/api/clinic-info', checkDBConnection, clinicInfoRoutes);
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -139,6 +202,22 @@ app.get('/debug/env', (req, res) => {
         MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
       },
       platform: 'Vercel'
+    }
+  });
+});
+
+app.get('/debug/db', (req, res) => {
+  res.json({
+    success: true,
+    connected: isConnected,
+    hasUri: !!RESOLVED_MONGODB_URI,
+    uriLength: RESOLVED_MONGODB_URI?.length || 0,
+    mongooseState: mongoose.connection.readyState,
+    stateNames: {
+      0: 'disconnected',
+      1: 'connected', 
+      2: 'connecting',
+      3: 'disconnecting'
     }
   });
 });

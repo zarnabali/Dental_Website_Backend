@@ -61,10 +61,11 @@ if (RESOLVED_MONGODB_URI) {
 }
 
 // TEMPORARY FIX: Vercel environment variable caching issue
-// Force correct URI if we detect the broken cached URI
-if (RESOLVED_MONGODB_URI && RESOLVED_MONGODB_URI.length <= 65) {
-  console.log('DETECTED CACHED BROKEN URI ON VERCEL - APPLYING FIX');
+// Force correct URI if we detect incomplete URI
+if (RESOLVED_MONGODB_URI && RESOLVED_MONGODB_URI.length < 100) {
+  console.log('DETECTED INCOMPLETE URI ON VERCEL - APPLYING FIX');
   console.log('Old URI length:', RESOLVED_MONGODB_URI.length);
+  console.log('Old URI preview:', RESOLVED_MONGODB_URI.substring(0, 50) + '...');
   RESOLVED_MONGODB_URI = 'mongodb+srv://Admin01:Admin@admin.ywqztuq.mongodb.net/dentist_website?retryWrites=true&w=majority';
   console.log('Applied fixed URI length:', RESOLVED_MONGODB_URI.length);
 }
@@ -81,14 +82,21 @@ const connectDB = async () => {
   }
   
   try {
+    console.log('Attempting MongoDB connection...');
+    console.log('URI length:', RESOLVED_MONGODB_URI.length);
+    console.log('URI preview:', RESOLVED_MONGODB_URI.substring(0, 50) + '...');
+    
     await mongoose.connect(RESOLVED_MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     });
     isConnected = true;
     console.log('Connected to MongoDB successfully');
   } catch (error) {
     console.error('MongoDB connection error:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error name:', error.name);
+    if (error.cause) console.error('Error cause:', error.cause);
     isConnected = false;
   }
 };

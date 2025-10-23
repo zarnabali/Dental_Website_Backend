@@ -224,11 +224,25 @@ app.get('/debug/env', (req, res) => {
 });
 
 app.get('/debug/db', (req, res) => {
+  // Mask the URI for security but show structure
+  let maskedUri = 'NOT SET';
+  if (RESOLVED_MONGODB_URI) {
+    maskedUri = RESOLVED_MONGODB_URI.replace(/:[^:@]*@/, ':***@');
+  }
+  
   res.json({
     success: true,
     connected: isConnected,
     hasUri: !!RESOLVED_MONGODB_URI,
     uriLength: RESOLVED_MONGODB_URI?.length || 0,
+    maskedUri: maskedUri,
+    uriStructure: {
+      startsWithMongo: RESOLVED_MONGODB_URI?.startsWith('mongodb') || false,
+      hasSrv: RESOLVED_MONGODB_URI?.includes('mongodb+srv') || false,
+      hasAuth: RESOLVED_MONGODB_URI?.includes('@') || false,
+      hasDatabase: RESOLVED_MONGODB_URI?.includes('/dentist_website') || false,
+      hasQueryParams: RESOLVED_MONGODB_URI?.includes('?') || false
+    },
     mongooseState: mongoose.connection.readyState,
     stateNames: {
       0: 'disconnected',

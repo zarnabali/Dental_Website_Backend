@@ -106,11 +106,18 @@ connectDB();
 
 // Database connection middleware
 const checkDBConnection = (req, res, next) => {
-  if (!isConnected) {
+  console.log(`DB Check for ${req.method} ${req.url}:`);
+  console.log('isConnected:', isConnected);
+  console.log('mongooseState:', mongoose.connection.readyState);
+  
+  if (!isConnected || mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       success: false,
       message: 'Database not connected. Check environment variables.',
       debug: {
+        isConnected: isConnected,
+        mongooseState: mongoose.connection.readyState,
+        stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
         hasUri: !!RESOLVED_MONGODB_URI,
         uriLength: RESOLVED_MONGODB_URI?.length || 0,
         envVars: {
@@ -122,6 +129,7 @@ const checkDBConnection = (req, res, next) => {
       }
     });
   }
+  console.log('DB check passed, proceeding to route handler');
   next();
 };
 
@@ -249,6 +257,19 @@ app.get('/debug/db', (req, res) => {
       1: 'connected', 
       2: 'connecting',
       3: 'disconnecting'
+    }
+  });
+});
+
+// Test route without database dependency
+app.get('/api/test-simple', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Simple API test - no database required',
+    timestamp: new Date().toISOString(),
+    dbStatus: {
+      connected: isConnected,
+      mongooseState: mongoose.connection.readyState
     }
   });
 });

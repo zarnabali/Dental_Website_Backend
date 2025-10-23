@@ -49,7 +49,7 @@ app.use((req, res, next) => {
 const mongoose = require('mongoose');
 
 // Resolve MongoDB URI from environment variables
-const RESOLVED_MONGODB_URI = 
+let RESOLVED_MONGODB_URI = 
   process.env.MONGODB_URI || 
   process.env.DATABASE_URL || 
   process.env.MONGO_URL || 
@@ -58,6 +58,15 @@ const RESOLVED_MONGODB_URI =
 console.log('MongoDB URI resolved:', RESOLVED_MONGODB_URI ? 'SET' : 'NOT SET');
 if (RESOLVED_MONGODB_URI) {
   console.log('URI length:', RESOLVED_MONGODB_URI.length);
+}
+
+// TEMPORARY FIX: Vercel environment variable caching issue
+// Force correct URI if we detect the broken cached URI
+if (RESOLVED_MONGODB_URI && RESOLVED_MONGODB_URI.length <= 65) {
+  console.log('DETECTED CACHED BROKEN URI ON VERCEL - APPLYING FIX');
+  console.log('Old URI length:', RESOLVED_MONGODB_URI.length);
+  RESOLVED_MONGODB_URI = 'mongodb+srv://Admin01:Admin@admin.ywqztuq.mongodb.net/dentist_website?retryWrites=true&w=majority';
+  console.log('Applied fixed URI length:', RESOLVED_MONGODB_URI.length);
 }
 
 // MongoDB connection with error handling

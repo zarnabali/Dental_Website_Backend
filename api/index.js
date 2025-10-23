@@ -75,6 +75,12 @@ console.log('FORCING CORRECT MONGODB URI FOR VERCEL');
 RESOLVED_MONGODB_URI = 'mongodb+srv://Admin01:Admin@admin.ywqztuq.mongodb.net/dentist_website?retryWrites=true&w=majority';
 console.log('Final URI length:', RESOLVED_MONGODB_URI.length);
 
+// Disconnect any existing connection first
+if (mongoose.connection.readyState !== 0) {
+  console.log('Disconnecting existing MongoDB connection...');
+  mongoose.disconnect();
+}
+
 // MongoDB connection with error handling
 let isConnected = false;
 let connectionPromise = null;
@@ -125,8 +131,17 @@ const connectDB = async () => {
   return connectionPromise;
 };
 
-// Initialize connection
-connectDB();
+// Initialize connection with immediate attempt
+console.log('Starting MongoDB connection immediately...');
+connectDB().then(connected => {
+  if (connected) {
+    console.log('MongoDB connection successful on startup');
+  } else {
+    console.log('MongoDB connection failed on startup');
+  }
+}).catch(err => {
+  console.error('MongoDB startup connection error:', err);
+});
 
 // Database connection middleware
 const checkDBConnection = async (req, res, next) => {
@@ -313,6 +328,18 @@ app.get('/api/test-simple', (req, res) => {
       connected: isConnected,
       mongooseState: mongoose.connection.readyState
     }
+  });
+});
+
+// Debug route to show actual URI being used
+app.get('/debug/uri', (req, res) => {
+  res.json({
+    success: true,
+    actualUri: RESOLVED_MONGODB_URI,
+    uriLength: RESOLVED_MONGODB_URI?.length || 0,
+    maskedUri: RESOLVED_MONGODB_URI?.replace(/:[^:@]*@/, ':***@') || 'NOT SET',
+    isConnected: isConnected,
+    mongooseState: mongoose.connection.readyState
   });
 });
 

@@ -83,52 +83,57 @@ if (mongoose.connection.readyState !== 0) {
 
 // MongoDB connection with error handling
 let isConnected = false;
-let connectionPromise = null;
+
+// Set up connection event listeners
+mongoose.connection.on('connected', () => {
+  isConnected = true;
+  console.log('Mongoose connected event fired');
+});
+
+mongoose.connection.on('disconnected', () => {
+  isConnected = false;
+  console.log('Mongoose disconnected event fired');
+});
+
+mongoose.connection.on('error', (err) => {
+  isConnected = false;
+  console.error('Mongoose error event:', err.message);
+});
 
 const connectDB = async () => {
   if (isConnected) return true;
-  if (connectionPromise) return connectionPromise;
   
   if (!RESOLVED_MONGODB_URI) {
     console.error('No MongoDB URI found in environment variables');
     return false;
   }
   
-  connectionPromise = (async () => {
-    try {
-      console.log('Attempting MongoDB connection...');
-      console.log('URI length:', RESOLVED_MONGODB_URI.length);
-      console.log('URI preview:', RESOLVED_MONGODB_URI.substring(0, 50) + '...');
-      
-      // Add connection timeout
-      const connectionTimeout = setTimeout(() => {
-        console.error('MongoDB connection timeout after 20 seconds');
-        mongoose.disconnect();
-      }, 20000);
-      
-      await mongoose.connect(RESOLVED_MONGODB_URI, {
-        serverSelectionTimeoutMS: 10000,
-        socketTimeoutMS: 30000,
-        connectTimeoutMS: 10000,
-        maxPoolSize: 1,
-        minPoolSize: 1,
-      });
-      
-      clearTimeout(connectionTimeout);
-      isConnected = true;
-      console.log('Connected to MongoDB successfully');
-      return true;
-    } catch (error) {
-      console.error('MongoDB connection error:', error.message);
-      console.error('Error code:', error.code);
-      console.error('Error name:', error.name);
-      if (error.cause) console.error('Error cause:', error.cause);
-      isConnected = false;
-      return false;
-    }
-  })();
-  
-  return connectionPromise;
+  try {
+    console.log('Attempting MongoDB connection...');
+    console.log('URI length:', RESOLVED_MONGODB_URI.length);
+    console.log('URI preview:', RESOLVED_MONGODB_URI.substring(0, 50) + '...');
+    
+    await mongoose.connect(RESOLVED_MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 30000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 1,
+      minPoolSize: 1,
+    });
+    
+    // Wait a moment for connection event to fire
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('Connected to MongoDB successfully');
+    return true;
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error name:', error.name);
+    if (error.cause) console.error('Error cause:', error.cause);
+    isConnected = false;
+    return false;
+  }
 };
 
 // Initialize connection with immediate attempt
@@ -149,41 +154,42 @@ const checkDBConnection = async (req, res, next) => {
   console.log('isConnected:', isConnected);
   console.log('mongooseState:', mongoose.connection.readyState);
   
-  // Try to connect if not already connected
-  if (!isConnected) {
-    console.log('Attempting to connect to database...');
-    const connected = await connectDB();
-    if (!connected) {
+  // Use mongoose state as the source of truth
+  if (mongoose.connection.readyState !== 1) {
+    // Try to connect if not connected
+    if (mongoose.connection.readyState === 0) {
+      console.log('Attempting to connect to database...');
+      const connected = await connectDB();
+      if (!connected) {
+        return res.status(503).json({
+          success: false,
+          message: 'Failed to connect to database. Check connection string and network.',
+          debug: {
+            isConnected: isConnected,
+            mongooseState: mongoose.connection.readyState,
+            stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
+            hasUri: !!RESOLVED_MONGODB_URI,
+            uriLength: RESOLVED_MONGODB_URI?.length || 0,
+            envVars: {
+              MONGODB_URI: !!process.env.MONGODB_URI,
+              DATABASE_URL: !!process.env.DATABASE_URL,
+              MONGO_URL: !!process.env.MONGO_URL,
+              MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
+            }
+          }
+        });
+      }
+    } else {
       return res.status(503).json({
         success: false,
-        message: 'Failed to connect to database. Check connection string and network.',
+        message: 'Database connection not ready.',
         debug: {
           isConnected: isConnected,
           mongooseState: mongoose.connection.readyState,
-          stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
-          hasUri: !!RESOLVED_MONGODB_URI,
-          uriLength: RESOLVED_MONGODB_URI?.length || 0,
-          envVars: {
-            MONGODB_URI: !!process.env.MONGODB_URI,
-            DATABASE_URL: !!process.env.DATABASE_URL,
-            MONGO_URL: !!process.env.MONGO_URL,
-            MONGODB_CONNECTION_STRING: !!process.env.MONGODB_CONNECTION_STRING
-          }
+          stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState]
         }
       });
     }
-  }
-  
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({
-      success: false,
-      message: 'Database connection not ready.',
-      debug: {
-        isConnected: isConnected,
-        mongooseState: mongoose.connection.readyState,
-        stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState]
-      }
-    });
   }
   
   console.log('DB check passed, proceeding to route handler');

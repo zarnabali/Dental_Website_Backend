@@ -70,6 +70,11 @@ if (RESOLVED_MONGODB_URI && RESOLVED_MONGODB_URI.length < 100) {
   console.log('Applied fixed URI length:', RESOLVED_MONGODB_URI.length);
 }
 
+// Force correct URI for Vercel (always use the working URI)
+console.log('FORCING CORRECT MONGODB URI FOR VERCEL');
+RESOLVED_MONGODB_URI = 'mongodb+srv://Admin01:Admin@admin.ywqztuq.mongodb.net/dentist_website?retryWrites=true&w=majority';
+console.log('Final URI length:', RESOLVED_MONGODB_URI.length);
+
 // MongoDB connection with error handling
 let isConnected = false;
 let connectionPromise = null;
@@ -89,10 +94,21 @@ const connectDB = async () => {
       console.log('URI length:', RESOLVED_MONGODB_URI.length);
       console.log('URI preview:', RESOLVED_MONGODB_URI.substring(0, 50) + '...');
       
+      // Add connection timeout
+      const connectionTimeout = setTimeout(() => {
+        console.error('MongoDB connection timeout after 20 seconds');
+        mongoose.disconnect();
+      }, 20000);
+      
       await mongoose.connect(RESOLVED_MONGODB_URI, {
-        serverSelectionTimeoutMS: 15000,
-        socketTimeoutMS: 45000,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 30000,
+        connectTimeoutMS: 10000,
+        maxPoolSize: 1,
+        minPoolSize: 1,
       });
+      
+      clearTimeout(connectionTimeout);
       isConnected = true;
       console.log('Connected to MongoDB successfully');
       return true;

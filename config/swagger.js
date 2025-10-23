@@ -13,6 +13,11 @@ const options = {
       }
     },
     servers: [
+      // Use relative URL so Swagger targets the current deployment host by default
+      {
+        url: '/',
+        description: 'Current host'
+      },
       ...(process.env.VERCEL_URL
         ? [
             {
@@ -53,8 +58,9 @@ const options = {
             }
           ]
         : []),
+      // Local development fallback with dynamic port
       {
-        url: 'http://localhost:5000',
+        url: `http://localhost:${process.env.PORT || 5000}`,
         description: 'Development server'
       }
     ],

@@ -34,7 +34,7 @@ const feedbackSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['enable', 'disable'],
-    default: 'enable'
+    default: 'disable'
   },
   isActive: {
     type: Boolean,

@@ -130,6 +130,9 @@ router.get('/', async (req, res) => {
  *                 type: string
  *                 format: email
  *                 example: "info@dentalclinic.com"
+ *               timings:
+ *                 type: string
+ *                 example: "Monday - Friday: 9:00 AM - 6:00 PM"
  *     responses:
  *       201:
  *         description: Clinic information created successfully
@@ -175,7 +178,8 @@ router.post('/', auth, [
   body('location2.description').trim().isLength({ min: 1, max: 500 }).withMessage('Location 2 description must be between 1 and 500 characters'),
   body('socialLinks.facebook').optional().isURL().withMessage('Facebook link must be a valid URL'),
   body('socialLinks.instagram').optional().isURL().withMessage('Instagram link must be a valid URL'),
-  body('email').isEmail().withMessage('Email must be a valid email address')
+  body('email').isEmail().withMessage('Email must be a valid email address'),
+  body('timings').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -276,6 +280,9 @@ router.post('/', auth, [
  *                 type: string
  *                 format: email
  *                 example: "updated@dentalclinic.com"
+ *               timings:
+ *                 type: string
+ *                 example: "Monday - Friday: 9:00 AM - 6:00 PM"
  *               isActive:
  *                 type: boolean
  *                 example: true
@@ -314,6 +321,7 @@ router.put('/update', auth, [
   body('socialLinks.facebook').optional().isURL().withMessage('Facebook link must be a valid URL'),
   body('socialLinks.instagram').optional().isURL().withMessage('Instagram link must be a valid URL'),
   body('email').optional().isEmail().withMessage('Email must be a valid email address'),
+  body('timings').optional().trim(),
   body('isActive').optional().isBoolean().withMessage('isActive must be a boolean')
 ], async (req, res) => {
   try {

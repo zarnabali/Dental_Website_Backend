@@ -9,25 +9,30 @@ const app = express();
 
 console.log('Vercel function starting...');
 
-// Basic middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Basic middleware - IMPORTANT: Don't parse multipart/form-data with body parsers
+// express.json() and express.urlencoded() only parse specific content types
+// Multer will handle multipart/form-data, so these won't interfere
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// CORS middleware
+// CORS middleware - Allow all necessary headers for file uploads
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
   next();
 });
 
-// Basic logging
+// Basic logging - log all incoming requests
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`📥 ${req.method} ${req.url}`);
+  console.log('Request headers:', req.headers['content-type'] || 'No content-type');
   next();
 });
 
@@ -180,6 +185,32 @@ const serviceRoutes = require('../routes/services');
 const blogRoutes = require('../routes/blogs');
 const clinicInfoRoutes = require('../routes/clinicInfo');
 
+// Load results routes with error handling
+let resultsRoutes;
+try {
+  console.log('🔄 Loading results routes from ../routes/results...');
+  resultsRoutes = require('../routes/results');
+  console.log('✅ Results routes loaded successfully');
+  console.log('Results routes is a function:', typeof resultsRoutes === 'function');
+  console.log('Results routes has router methods:', typeof resultsRoutes.get === 'function');
+} catch (error) {
+  console.error('❌ CRITICAL ERROR loading results routes:', error);
+  console.error('Error name:', error.name);
+  console.error('Error message:', error.message);
+  console.error('Error stack:', error.stack);
+  // Create a dummy router that returns an error so the app doesn't crash
+  const express = require('express');
+  resultsRoutes = express.Router();
+  resultsRoutes.all('*', (req, res) => {
+    console.error('Results routes failed to load, returning error');
+    res.status(500).json({
+      success: false,
+      message: 'Results routes failed to load: ' + error.message,
+      error: error.stack
+    });
+  });
+}
+
 // Swagger Documentation
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('../config/swagger');
@@ -206,6 +237,35 @@ app.use('/api/services', checkDBConnection, serviceRoutes);
 app.use('/api/blogs', checkDBConnection, blogRoutes);
 app.use('/api/clinic-info', checkDBConnection, clinicInfoRoutes);
 
+// Register results routes - CRITICAL: Must be registered BEFORE the 404 handler
+console.log('═══════════════════════════════════════════════════════');
+console.log('🔄 Registering /api/results route...');
+if (!resultsRoutes) {
+  console.error('❌ CRITICAL: resultsRoutes is undefined!');
+} else {
+  console.log('✅ Results routes object exists');
+  console.log('Results routes type:', typeof resultsRoutes);
+  console.log('Has get method:', typeof resultsRoutes.get === 'function');
+  console.log('Has post method:', typeof resultsRoutes.post === 'function');
+  console.log('Has delete method:', typeof resultsRoutes.delete === 'function');
+}
+
+try {
+  // Register the route with DB check
+  app.use('/api/results', checkDBConnection, resultsRoutes);
+  console.log('✅ Results route registered at /api/results');
+  console.log('Routes available: GET /api/results, POST /api/results, DELETE /api/results/:id');
+  console.log('Test route: GET /api/results/test (no DB required)');
+} catch (error) {
+  console.error('❌ FATAL ERROR registering results route:', error);
+  console.error('Error details:', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack
+  });
+}
+console.log('═══════════════════════════════════════════════════════');
+
 // Basic routes (no DB required)
 app.get('/', (req, res) => {
   res.json({
@@ -228,6 +288,7 @@ app.get('/', (req, res) => {
       services: '/api/services',
       blogs: '/api/blogs',
       clinicInfo: '/api/clinic-info',
+      results: '/api/results',
       docs: '/api-docs'
     }
   });
@@ -338,12 +399,16 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404 handler - MUST be last
 app.use('*', (req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  console.log('Available routes should include /api/results');
   res.status(404).json({
     message: 'Route not found',
     status: 'error',
-    url: req.url
+    url: req.originalUrl,
+    method: req.method,
+    hint: 'Check if the route is registered and the server was restarted'
   });
 });
 

@@ -232,6 +232,7 @@ const feedbackRoutes = require('./routes/feedback');
 const serviceRoutes = require('./routes/services');
 const blogRoutes = require('./routes/blogs');
 const clinicInfoRoutes = require('./routes/clinicInfo');
+const resultsRoutes = require('./routes/results');
 
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -258,6 +259,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/clinic-info', clinicInfoRoutes);
+app.use('/api/results', resultsRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -280,6 +282,7 @@ app.get('/', (req, res) => {
       services: '/api/services',
       blogs: '/api/blogs',
       clinicInfo: '/api/clinic-info',
+      results: '/api/results',
       docs: '/api-docs'
     }
   });
@@ -423,5 +426,6 @@ app.listen(PORT, () => {
   console.log(`   • Services: ${baseUrl}/api/services`);
   console.log(`   • Blogs: ${baseUrl}/api/blogs`);
   console.log(`   • Clinic Info: ${baseUrl}/api/clinic-info`);
+  console.log(`   • Results: ${baseUrl}/api/results`);
   console.log(`   • Swagger UI: ${baseUrl}/api-docs`);
 });

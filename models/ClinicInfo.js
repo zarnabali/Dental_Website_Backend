@@ -112,6 +112,10 @@ const clinicInfoSchema = new mongoose.Schema({
       message: 'Email must be a valid email address'
     }
   },
+  timings: {
+    type: String,
+    trim: true
+  },
   isActive: {
     type: Boolean,
     default: true

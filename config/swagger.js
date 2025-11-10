@@ -847,6 +847,10 @@ const options = {
               type: 'string',
               example: 'info@dentalclinic.com'
             },
+            timings: {
+              type: 'string',
+              example: 'Monday - Friday: 9:00 AM - 6:00 PM'
+            },
             isActive: {
               type: 'boolean',
               example: true
@@ -923,6 +927,65 @@ const options = {
               type: 'string',
               maxLength: 100,
               example: 'We use cutting-edge technology for diagnosis and treatment'
+            }
+          }
+        },
+        Results: {
+          type: 'object',
+          properties: {
+            _id: {
+              type: 'string',
+              example: '60f7b3b3b3b3b3b3b3b3b3b3'
+            },
+            title: {
+              type: 'string',
+              maxLength: 50,
+              example: 'Teeth Whitening Success Story'
+            },
+            description: {
+              type: 'string',
+              maxLength: 100,
+              example: 'Patient achieved brighter smile after treatment'
+            },
+            beforeImage: {
+              type: 'object',
+              properties: {
+                public_id: {
+                  type: 'string',
+                  example: 'results/before_123_abc'
+                },
+                url: {
+                  type: 'string',
+                  example: 'https://res.cloudinary.com/your-cloud/image/upload/v1234567890/results/before_123_abc.jpg'
+                }
+              }
+            },
+            afterImage: {
+              type: 'object',
+              properties: {
+                public_id: {
+                  type: 'string',
+                  example: 'results/after_123_abc'
+                },
+                url: {
+                  type: 'string',
+                  example: 'https://res.cloudinary.com/your-cloud/image/upload/v1234567890/results/after_123_abc.jpg'
+                }
+              }
+            },
+            isActive: {
+              type: 'boolean',
+              example: true
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2023-07-20T10:30:00.000Z'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              example: '2023-07-20T15:45:00.000Z'
             }
           }
         }
